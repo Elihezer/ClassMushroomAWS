@@ -1,0 +1,7 @@
+numpy<2.4
+pandas
+pyarrow<21
+scikit-learn
+albumentations
+opencv-python-headless
+boto3
