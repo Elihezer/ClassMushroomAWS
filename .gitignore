@@ -10,3 +10,5 @@ __pycache__/
 data/
 outputs/
 .ipynb_checkpoints/
+
+training/model_output/
