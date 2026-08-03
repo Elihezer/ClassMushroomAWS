@@ -1,7 +1,8 @@
-numpy<2.4
-pandas
-pyarrow<21
-scikit-learn
-albumentations
-opencv-python-headless
-boto3
+numpy==1.26.4
+pandas==2.3.3
+pyarrow==20.0.0
+scikit-learn==1.9.0
+albumentations==2.0.8
+opencv-python-headless==4.11.0.86
+Pillow==12.3.0
+boto3>=1.43,<1.44
