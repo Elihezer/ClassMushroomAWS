@@ -1,0 +1,6 @@
+torch
+torchvision
+pyarrow==20.0.0
+Pillow
+scikit-learn
+sagemaker
