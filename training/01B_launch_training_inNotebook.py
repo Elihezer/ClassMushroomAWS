@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.models import ResNet18_Weights, resnet18
 
 # Use both available vCPUs for PyTorch CPU operations.
-torch.set_num_threads(8)
+torch.set_num_threads(64)
 
 # Keep inter-operation parallelism simple.
 torch.set_num_interop_threads(1)
@@ -58,7 +58,7 @@ print("Training device:", device)
 epochs = 20
 batch_size = 32
 learning_rate = 0.0001   # dynamic
-num_workers = 2
+num_workers = 8
 label_smoothing = 0.0
 
 print("Epochs:", epochs)
@@ -285,7 +285,7 @@ model = resnet18(
 )
 
 # Define the dropout probability.
-dropout_rate = 0.1
+dropout_rate = 0.0
 
 # Save the number of features produced by ResNet18.
 number_of_features = model.fc.in_features
