@@ -55,7 +55,7 @@ print("Training device:", device)
 
 
 # Define the first training configuration.
-epochs = 20
+epochs = 12
 batch_size = 32
 learning_rate = 0.0001   # dynamic
 num_workers = 8
