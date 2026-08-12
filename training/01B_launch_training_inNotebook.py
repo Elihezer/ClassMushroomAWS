@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 # coding: utf-8
-
-# In[1]:
-
-
 # Standard library imports.
 import json
 from io import BytesIO
@@ -21,8 +17,17 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from torchvision.models import ResNet18_Weights, resnet18
 
-# Use both available vCPUs for PyTorch CPU operations.
-torch.set_num_threads(64)
+# Standard library import.
+from datetime import datetime
+
+
+# Standard library imports.
+import json
+import platform
+import time
+
+# Setting concerning how many threads to use for PyTorch CPU operations.
+torch.set_num_threads(4)
 
 # Keep inter-operation parallelism simple.
 torch.set_num_interop_threads(1)
@@ -50,24 +55,17 @@ print("AWS Region:", aws_region)
 print("PyTorch version:", torch.__version__)
 print("Training device:", device)
 
-
-# In[2]:
-
-
 # Define the first training configuration.
 epochs = 12
 batch_size = 32
 learning_rate = 0.0001   # dynamic
-num_workers = 8
+num_workers = 2
 label_smoothing = 0.0
 
 print("Epochs:", epochs)
 print("Batch size:", batch_size)
 print("Learning rate:", learning_rate)
 print("DataLoader workers:", num_workers)
-
-
-# In[3]:
 
 
 # Define the S3 bucket name.
@@ -89,9 +87,6 @@ print("Training path:", train_path)
 print("Validation path:", validation_path)
 
 
-# In[4]:
-
-
 # Read the training dataset from Amazon S3.
 train_table = pq.read_table(
     train_path,
@@ -109,10 +104,6 @@ print("Validation rows:", validation_table.num_rows)
 
 print("Training columns:", train_table.column_names)
 print("Validation columns:", validation_table.column_names)
-
-
-# In[5]:
-
 
 # Extract the unique class names from the training dataset.
 class_names = sorted(
@@ -134,8 +125,6 @@ print("Number of classes:", number_of_classes)
 print("Label mapping:")
 label_mapping
 
-
-# In[6]:
 
 
 class MushroomDataset(Dataset):
@@ -205,9 +194,6 @@ class MushroomDataset(Dataset):
         return image, target
 
 
-# In[7]:
-
-
 # Select the default pretrained ResNet18 weights.
 weights = ResNet18_Weights.DEFAULT
 
@@ -217,8 +203,6 @@ image_transform = weights.transforms()
 print("ResNet18 preprocessing:")
 image_transform
 
-
-# In[8]:
 
 
 # Create the training Dataset.
@@ -259,9 +243,6 @@ print("Inter-op threads:", torch.get_num_interop_threads())
 print("DataLoader workers:", train_loader.num_workers)
 
 
-# In[9]:
-
-
 # Read one training batch.
 sample_images, sample_targets = next(
     iter(train_loader)
@@ -276,7 +257,7 @@ print("Target tensor type:", sample_targets.dtype)
 print("First targets:", sample_targets[:10])
 
 
-# In[10]:
+
 
 
 # Load ResNet18 with pretrained ImageNet weights.
@@ -346,8 +327,6 @@ print(model.fc)
 print("Model device:", device)
 
 
-# In[11]:
-
 
 # Define the regularized loss used during training.
 training_loss_function = nn.CrossEntropyLoss(
@@ -377,13 +356,6 @@ print(    "Training label smoothing:",    label_smoothing)
 print(    "Validation loss function:",    validation_loss_function.__class__.__name__)
 print(    "Optimizer:",    optimizer.__class__.__name__)
 print(    "Initial learning rate:",    optimizer.param_groups[0]["lr"])
-
-
-# In[12]:
-
-
-# Standard library import.
-from datetime import datetime
 
 
 # Create a unique identifier for this training run.
@@ -426,13 +398,7 @@ print("Mapping path:", mapping_path)
 print("History path:", history_path)
 
 
-# In[13]:
 
-
-# Standard library imports.
-import json
-import platform
-import time
 
 # Store the configuration used by this training run.
 run_config = {
@@ -482,7 +448,6 @@ training_history = []
 print("Run configuration saved to:", config_path)
 
 
-# In[14]:
 
 
 # Record the run start time.
@@ -683,7 +648,6 @@ for epoch in range(epochs):
         )
 
 
-# In[15]:
 
 
 # Save the label mapping for this training run.
@@ -760,7 +724,6 @@ print("History saved to:", history_path)
 print("Summary saved to:", summary_path)
 
 
-# In[16]:
 
 
 # Define the S3 destination for this training run.
@@ -797,10 +760,4 @@ print(
     "Training run uploaded to:",
     f"s3://{bucket_name}/{s3_run_prefix}/"
 )
-
-
-# In[ ]:
-
-
-
 
