@@ -12,3 +12,5 @@ outputs/
 .ipynb_checkpoints/
 
 training/model_output/
+training/"train - Copie.py"
+training/"launch_training - Copie.py"
