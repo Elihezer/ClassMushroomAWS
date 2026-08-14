@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
+
+# Import of the train function from the train.py file.
+from train import train
+
 # Standard library imports.
 import json
 from io import BytesIO
@@ -26,11 +30,7 @@ import json
 import platform
 import time
 
-# Setting concerning how many threads to use for PyTorch CPU operations.
-torch.set_num_threads(4)
 
-# Keep inter-operation parallelism simple.
-torch.set_num_interop_threads(1)
 
 # Read the current notebook directory.
 current_directory = Path.cwd()
@@ -55,17 +55,47 @@ print("AWS Region:", aws_region)
 print("PyTorch version:", torch.__version__)
 print("Training device:", device)
 
-# Define the first training configuration.
+# -------------------------------------------------------------------------
+# Runtime configuration
+# -------------------------------------------------------------------------
+
+torch_threads = 4
+interop_threads = 1
+num_workers = 2
+
+# -------------------------------------------------------------------------
+# Training configuration
+# -------------------------------------------------------------------------
+
 epochs = 12
 batch_size = 32
-learning_rate = 0.0001   # dynamic
-num_workers = 2
-label_smoothing = 0.0
+learning_rate = 0.0001
 
-print("Epochs:", epochs)
-print("Batch size:", batch_size)
-print("Learning rate:", learning_rate)
-print("DataLoader workers:", num_workers)
+label_smoothing = 0.0
+dropout_rate = 0.0
+
+# -------------------------------------------------------------------------
+# Transfer-learning configuration
+# -------------------------------------------------------------------------
+
+freeze_conv1 = True
+freeze_bn1 = True
+freeze_layer1 = True
+freeze_layer2 = True
+
+# -------------------------------------------------------------------------
+# Learning-rate scheduler configuration
+# -------------------------------------------------------------------------
+
+scheduler_factor = 0.5
+scheduler_patience = 1
+scheduler_min_lr = 0.000001
+
+# Setting concerning how many threads to use for PyTorch CPU operations.
+torch.set_num_threads(torch_threads)
+
+# Keep inter-operation parallelism simple.
+torch.set_num_interop_threads(interop_threads)
 
 
 # Define the S3 bucket name.
@@ -105,259 +135,6 @@ print("Validation rows:", validation_table.num_rows)
 print("Training columns:", train_table.column_names)
 print("Validation columns:", validation_table.column_names)
 
-# Extract the unique class names from the training dataset.
-class_names = sorted(
-    set(
-        train_table["mushroom_name"].to_pylist()
-    )
-)
-
-# Assign one numeric ID to every mushroom class.
-label_mapping = {
-    mushroom_name: class_id
-    for class_id, mushroom_name
-    in enumerate(class_names)
-}
-
-number_of_classes = len(label_mapping)
-
-print("Number of classes:", number_of_classes)
-print("Label mapping:")
-label_mapping
-
-
-
-class MushroomDataset(Dataset):
-    def __init__(
-        self,
-        table,
-        label_mapping,
-        transform
-    ):
-        self.table = table
-        self.label_mapping = label_mapping
-        self.transform = transform
-
-    def __len__(self):
-        return self.table.num_rows
-
-    def __getitem__(self, index):
-        # Read the encoded image value.
-        image_value = self.table[
-            "image"
-        ][index].as_py()
-
-        # Extract the encoded image bytes.
-        if isinstance(image_value, dict):
-            image_bytes = image_value["bytes"]
-        else:
-            image_bytes = image_value
-
-        # Decode the image as RGB.
-        image = Image.open(
-            BytesIO(image_bytes)
-        ).convert("RGB")
-
-        # Read the bounding box.
-        bbox = self.table[
-            "bbox"
-        ][index].as_py()
-
-        x_min, y_min, x_max, y_max = map(
-            int,
-            bbox
-        )
-
-        # Crop the image around the annotated mushroom.
-        image = image.crop(
-            (
-                x_min,
-                y_min,
-                x_max,
-                y_max
-            )
-        )
-
-        # Apply the preprocessing required by ResNet18.
-        image = self.transform(image)
-
-        # Read the textual target.
-        mushroom_name = self.table[
-            "mushroom_name"
-        ][index].as_py()
-
-        # Convert the textual target into a numeric ID.
-        target = self.label_mapping[
-            mushroom_name
-        ]
-
-        return image, target
-
-
-# Select the default pretrained ResNet18 weights.
-weights = ResNet18_Weights.DEFAULT
-
-# Load the preprocessing associated with these weights.
-image_transform = weights.transforms()
-
-print("ResNet18 preprocessing:")
-image_transform
-
-
-
-# Create the training Dataset.
-train_dataset = MushroomDataset(
-    train_table,
-    label_mapping,
-    image_transform
-)
-
-# Create the validation Dataset.
-validation_dataset = MushroomDataset(
-    validation_table,
-    label_mapping,
-    image_transform
-)
-
-# Create the training DataLoader.
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    num_workers=num_workers
-)
-
-# Create the validation DataLoader.
-validation_loader = DataLoader(
-    validation_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-    num_workers=num_workers
-)
-
-print("Training batches:", len(train_loader))
-print("Validation batches:", len(validation_loader))
-
-print("PyTorch threads:", torch.get_num_threads())
-print("Inter-op threads:", torch.get_num_interop_threads())
-print("DataLoader workers:", train_loader.num_workers)
-
-
-# Read one training batch.
-sample_images, sample_targets = next(
-    iter(train_loader)
-)
-
-print("Image batch shape:", sample_images.shape)
-print("Target batch shape:", sample_targets.shape)
-
-print("Image tensor type:", sample_images.dtype)
-print("Target tensor type:", sample_targets.dtype)
-
-print("First targets:", sample_targets[:10])
-
-
-
-
-
-# Load ResNet18 with pretrained ImageNet weights.
-model = resnet18(
-    weights=weights
-)
-
-# Define the dropout probability.
-dropout_rate = 0.0
-
-# Save the number of features produced by ResNet18.
-number_of_features = model.fc.in_features
-
-# Replace the original classifier with dropout and a new classifier.
-model.fc = nn.Sequential(
-    nn.Dropout(p=dropout_rate),
-    nn.Linear(
-        number_of_features,
-        number_of_classes
-    )
-)
-
-# Ensure that every parameter is initially trainable.                                 
-# This is useful when the notebook cells are executed several times.
-for parameter in model.parameters():
-    parameter.requires_grad = True
-
-# Freeze the first convolution layer.
-for parameter in model.conv1.parameters():
-    parameter.requires_grad = False
-
-# Freeze the first batch-normalization layer.
-for parameter in model.bn1.parameters():
-    parameter.requires_grad = False
-
-# Freeze the first ResNet block.
-for parameter in model.layer1.parameters():
-    parameter.requires_grad = False
-
-
-# Freeze the second residual stage.
-for parameter in model.layer2.parameters():
-    parameter.requires_grad = False    
-
-total_parameters = sum(
-    parameter.numel()
-    for parameter in model.parameters()
-)
-
-trainable_parameters = sum(
-    parameter.numel()
-    for parameter in model.parameters()
-    if parameter.requires_grad
-)
-
-print(f"Total parameters: {total_parameters:,}")
-print(f"Trainable parameters: {trainable_parameters:,}")
-print(
-    f"Trainable percentage: "
-    f"{100 * trainable_parameters / total_parameters:.2f}%"
-)
-
-# Move the model to the selected device.
-model = model.to(device)
-
-print(model.fc)
-print("Model device:", device)
-
-
-
-# Define the regularized loss used during training.
-training_loss_function = nn.CrossEntropyLoss(
-    label_smoothing=label_smoothing
-)
-
-# Define the standard loss used during validation.
-validation_loss_function = nn.CrossEntropyLoss()
-
-# Define the optimizer.
-optimizer = AdamW(
-    model.parameters(),
-    lr=learning_rate
-)
-
-# Define the learning-rate scheduler.
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer,
-    mode="min",       # Reduce the LR when validation loss stops decreasing.
-    factor=0.5,       # Divide the LR by two.
-    patience=1,       # Allow one epoch without improvement.
-    min_lr=0.000001   # Do not reduce the LR below 1e-6.
-)
-
-print(    "Training loss function:",    training_loss_function.__class__.__name__)
-print(    "Training label smoothing:",    label_smoothing)
-print(    "Validation loss function:",    validation_loss_function.__class__.__name__)
-print(    "Optimizer:",    optimizer.__class__.__name__)
-print(    "Initial learning rate:",    optimizer.param_groups[0]["lr"])
-
-
 # Create a unique identifier for this training run.
 run_id = datetime.now().strftime(
     "%Y%m%d_%H%M%S"
@@ -375,20 +152,46 @@ run_directory.mkdir(
     exist_ok=False
 )
 
-# Define the artifact paths for this training run.
-model_path = (
-    run_directory
-    / "model.pt"
+training_result = train(
+    train_table=train_table,
+    validation_table=validation_table,
+    model_directory=run_directory,
+    epochs=epochs,
+    batch_size=batch_size,
+    learning_rate=learning_rate,
+    num_workers=num_workers,
+    label_smoothing=label_smoothing,
+    dropout_rate=dropout_rate,
+    freeze_conv1=freeze_conv1,
+    freeze_bn1=freeze_bn1,
+    freeze_layer1=freeze_layer1,
+    freeze_layer2=freeze_layer2,
+    scheduler_factor=scheduler_factor,
+    scheduler_patience=scheduler_patience,
+    scheduler_min_lr=scheduler_min_lr
 )
 
-mapping_path = (
-    run_directory
-    / "label_mapping.json"
+# Get results produced by train().
+model_path = training_result["model_path"]
+mapping_path = training_result["mapping_path"]
+history_path = training_result["history_path"]
+
+best_validation_accuracy = (
+    training_result["best_validation_accuracy"]
 )
 
-history_path = (
-    run_directory
-    / "training_history.json"
+best_epoch = training_result["best_epoch"]
+
+training_history = (
+    training_result["training_history"]
+)
+
+training_duration_seconds = (
+    training_result["training_duration_seconds"]
+)
+
+number_of_classes = (
+    training_result["number_of_classes"]
 )
 
 print("Training run ID:", run_id)
@@ -407,16 +210,15 @@ run_config = {
     "batch_size": batch_size,
     "learning_rate": learning_rate,
     "num_workers": num_workers,
-    "optimizer": optimizer.__class__.__name__,
-    "training_loss_function": training_loss_function.__class__.__name__,
+    "optimizer": training_result["optimizer"],
+    "training_loss_function": training_result["training_loss_function"],
     "training_label_smoothing": label_smoothing,
-    "validation_loss_function": validation_loss_function.__class__.__name__,
     "model": "ResNet18",
-    "pretrained_weights": str(weights),
+    "pretrained_weights": training_result["pretrained_weights"],
     "number_of_classes": number_of_classes,
     "training_rows": train_table.num_rows,
     "validation_rows": validation_table.num_rows,
-    "device": str(device),
+    "device": training_result["device"],
     "python_version": platform.python_version(),
     "pytorch_version": torch.__version__,
     "dropout_rate": dropout_rate
@@ -440,235 +242,9 @@ with open(
         ensure_ascii=False
     )
 
-# Initialize the epoch history.
-training_history = []
-
-
 
 print("Run configuration saved to:", config_path)
 
-
-
-
-# Record the run start time.
-training_start_time = time.perf_counter()
-
-# Start below every possible accuracy value.
-best_validation_accuracy = -1.0
-
-# Keep track of the epoch that produced the best model.
-best_epoch = None
-
-for epoch in range(epochs):
-
-    epoch_start_time = time.perf_counter()
-    # Enable training mode.
-    model.train()
-
-    # Keep the frozen BatchNorm layers in evaluation mode.
-    model.bn1.eval()
-    model.layer1.eval()
-
-    training_loss = 0.0
-    training_correct = 0
-    training_total = 0
-
-    for batch_index, (
-        images,
-        targets
-    ) in enumerate(
-        train_loader,
-        start=1
-    ):
-        images = images.to(device)
-        targets = targets.to(device)
-
-        optimizer.zero_grad()
-
-        outputs = model(images)
-
-        loss = training_loss_function(
-            outputs,
-            targets
-        )
-
-        loss.backward()
-        optimizer.step()
-
-        training_loss += (
-            loss.item()
-            * images.size(0)
-        )
-
-        predictions = outputs.argmax(
-            dim=1
-        )
-
-        training_correct += (
-            predictions == targets
-        ).sum().item()
-
-        training_total += targets.size(0)
-
-        # Display progress every ten batches.
-        if batch_index % 10 == 0:
-            print(
-                f"Epoch {epoch + 1}/{epochs} "
-                f"| Batch {batch_index}/{len(train_loader)}"
-            )
-
-    epoch_training_loss = (
-        training_loss
-        / training_total
-    )
-
-    epoch_training_accuracy = (
-        training_correct
-        / training_total
-    )
-
-    # Enable evaluation mode.
-    model.eval()
-
-    validation_loss = 0.0
-    validation_correct = 0
-    validation_total = 0
-
-    with torch.no_grad():
-        for images, targets in validation_loader:
-            images = images.to(device)
-            targets = targets.to(device)
-
-            outputs = model(images)
-
-            loss = validation_loss_function(
-                outputs,
-                targets
-            )
-
-            validation_loss += (
-                loss.item()
-                * images.size(0)
-            )
-
-            predictions = outputs.argmax(
-                dim=1
-            )
-
-            validation_correct += (
-                predictions == targets
-            ).sum().item()
-
-            validation_total += targets.size(0)
-
-    epoch_validation_loss = (
-        validation_loss
-        / validation_total
-    )
-
-    # Give the validation loss to the scheduler.
-    scheduler.step(epoch_validation_loss)
-    
- 
-
-    # Calculate the complete epoch duration.
-    epoch_duration_seconds = (    time.perf_counter()    - epoch_start_time    )
-
-    # Display the learning rate that will be used for the next epoch.
-    print( f"Time to complete Epoch: {epoch_duration_seconds} seconds")
-
-    # Display the learning rate that will be used for the next epoch.
-    print(
-        "Learning rate for next epoch",
-        optimizer.param_groups[0]["lr"]
-    )
-
-    epoch_validation_accuracy = (
-        validation_correct
-        / validation_total
-    )
-
-    print(
-        f"Epoch {epoch + 1}/{epochs} "
-        f"| Train loss: {epoch_training_loss:.4f} "
-        f"| Train accuracy: {epoch_training_accuracy:.4f} "
-        f"| Validation loss: {epoch_validation_loss:.4f} "
-        f"| Validation accuracy: "
-        f"{epoch_validation_accuracy:.4f}"
-    )
-    # Store the metrics produced by the current epoch.
-    epoch_statistics = {
-        "epoch": epoch + 1,
-        "train_loss": epoch_training_loss,
-        "train_accuracy": epoch_training_accuracy,
-        "validation_loss": epoch_validation_loss,
-        "validation_accuracy": epoch_validation_accuracy
-    }
-    
-    training_history.append(
-        epoch_statistics
-    )
-    
-    # Save the complete history after every epoch.
-    with open(
-        history_path,
-        "w",
-        encoding="utf-8"
-    ) as history_file:
-        json.dump(
-            training_history,
-            history_file,
-            indent=4
-        )
-    
-    print(
-        "Training history updated:",
-        history_path
-    )
-
-    # Save the best model weights.
-    if (
-        epoch_validation_accuracy
-        > best_validation_accuracy
-    ):
-        best_validation_accuracy = (
-            epoch_validation_accuracy
-        )
-    
-        best_epoch = epoch + 1
-    
-        torch.save(
-            model.state_dict(),
-            model_path
-        )
-
-        print(
-            "Best model saved:",
-            model_path
-        )
-
-
-
-
-# Save the label mapping for this training run.
-# Measure the complete training duration.
-training_duration_seconds = (
-    time.perf_counter()
-    - training_start_time
-)
-
-# Save the label mapping for this run.
-with open(
-    mapping_path,
-    "w",
-    encoding="utf-8"
-) as mapping_file:
-    json.dump(
-        label_mapping,
-        mapping_file,
-        indent=4,
-        ensure_ascii=False
-    )
 
 # Build the final run summary.
 run_summary = {
