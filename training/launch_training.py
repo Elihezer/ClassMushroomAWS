@@ -59,15 +59,15 @@ print("Training device:", device)
 # Runtime configuration
 # -------------------------------------------------------------------------
 
-torch_threads = 4
+torch_threads = 1
 interop_threads = 1
-num_workers = 2
+num_workers = 6
 
 # -------------------------------------------------------------------------
 # Training configuration
 # -------------------------------------------------------------------------
 
-epochs = 12
+epochs = 20
 batch_size = 32
 learning_rate = 0.0001
 

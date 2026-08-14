@@ -27,6 +27,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from torchvision.models import ResNet18_Weights, resnet18
 
+#torch.backends.cudnn.benchmark = True
 
 class MushroomDataset(Dataset):
     def __init__(
@@ -151,7 +152,10 @@ def train(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=num_workers
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=True
+        #prefetch_factor=4
     )
 
 
@@ -241,6 +245,9 @@ def train(
     best_validation_accuracy = -1.0
 
     for epoch in range(epochs):
+
+        epoch_start_time = time.perf_counter()
+        
         # Enable training mode.
         model.train()
 
@@ -258,9 +265,12 @@ def train(
         training_correct = 0
         training_total = 0
 
-        for images, targets in train_loader:
-            images = images.to(device)
-            targets = targets.to(device)
+        for batch_index, (images, targets) in enumerate(
+            train_loader,
+            start=1
+        ):
+            images = images.to(device, non_blocking=True)
+            targets = targets.to(device, non_blocking=True)
 
             optimizer.zero_grad()
 
@@ -283,6 +293,12 @@ def train(
             ).sum().item()
 
             training_total += targets.size(0)
+            
+            if batch_index % 10 == 0:
+                print(
+                    f"Epoch {epoch + 1}/{epochs} "
+                    f"| Batch {batch_index}/{len(train_loader)}"
+                )
 
         epoch_training_loss = (
             training_loss / training_total
@@ -329,8 +345,23 @@ def train(
 
         scheduler.step(epoch_validation_loss)
 
+        print(
+            "Learning rate for next epoch:",
+            optimizer.param_groups[0]["lr"]
+        )
+
         epoch_validation_accuracy = (
             validation_correct / validation_total
+        )
+
+        epoch_duration_seconds = (
+            time.perf_counter()
+            - epoch_start_time
+        )
+
+        print(
+            f"Epoch duration: "
+            f"{epoch_duration_seconds:.2f} seconds"
         )
 
         epoch_statistics = {
@@ -338,7 +369,8 @@ def train(
             "train_loss": epoch_training_loss,
             "train_accuracy": epoch_training_accuracy,
             "validation_loss": epoch_validation_loss,
-            "validation_accuracy": epoch_validation_accuracy
+            "validation_accuracy": epoch_validation_accuracy,
+            "epoch_duration_seconds": epoch_duration_seconds
         }
 
         training_history.append(
