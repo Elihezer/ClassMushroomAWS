@@ -12,6 +12,7 @@ from pathlib import Path
 # Third-party imports.
 import boto3
 import pyarrow.parquet as pq
+import pyarrow.compute as pc
 import torch
 import torch.nn as nn
 
@@ -69,12 +70,12 @@ num_workers = 8
 # Training configuration
 # -------------------------------------------------------------------------
 
-epochs = 40
+epochs = 20
 batch_size = 32
 learning_rate = 0.0001
 
-label_smoothing = 0.1
-dropout_rate = 0.1
+label_smoothing = 0
+dropout_rate = 0
 
 # -------------------------------------------------------------------------
 # Transfer-learning configuration
@@ -123,6 +124,27 @@ print("Validation path:", validation_path)
 train_table = pq.read_table(
     train_path,
     filesystem=s3
+)
+
+#Removal of augmented images
+
+training_rows_before_filter = train_table.num_rows
+
+train_table = train_table.filter(
+    pc.equal(
+        train_table["origin"],
+        "natural"
+    )
+)
+
+print(
+    "Training rows before original filter:",
+    training_rows_before_filter
+)
+
+print(
+    "Training rows after original filter:",
+    train_table.num_rows
 )
 
 # Read the validation dataset from Amazon S3.
@@ -340,3 +362,28 @@ print(
     f"s3://{bucket_name}/{s3_run_prefix}/"
 )
 
+# Upload misclassified validation images.
+misclassified_directory = Path(
+    training_result[
+        "misclassified_directory"
+    ]
+)
+
+for image_path in misclassified_directory.glob(
+    "*.jpg"
+):
+    s3_client.upload_file(
+        str(image_path),
+        bucket_name,
+        (
+            f"{s3_run_prefix}/"
+            f"misclassified/"
+            f"{image_path.name}"
+        )
+    )
+
+print(
+    "Misclassified validation images uploaded:",
+    f"s3://{bucket_name}/"
+    f"{s3_run_prefix}/misclassified/"
+)
