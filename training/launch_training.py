@@ -106,7 +106,7 @@ bucket_name = "mushroom-ml-mikael-2026-000"
 # Define the training Parquet path.
 train_path = (
     f"{bucket_name}/processed/parquet/"
-    "train_balanced_augmented.parquet"
+    "mushrooms_CleanedNamesID_prunned.parquet"
 )
 
 # Define the validation Parquet path.
