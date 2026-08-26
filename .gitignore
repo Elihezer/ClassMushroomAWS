@@ -15,4 +15,9 @@ training/model_output/
 training/train - Copie.py
 training/launch_training - Copie.py
 
+inference/label_mapping.json
+inference/model.pt
+model_output/
+
+
 *.invalid

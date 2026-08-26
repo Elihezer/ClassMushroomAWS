@@ -6,14 +6,17 @@ import torch.nn as nn
 
 from PIL import Image
 from torchvision.models import ResNet18_Weights, resnet18
-
+import requests
+from io import BytesIO
 
 import boto3
 
 
 bucket_name = "mushroom-ml-mikael-2026-000"
 model_key = "inference/model/v1/model.pt"
+model_label_key = "inference/model/v1/label_mapping.json"
 local_model_path = "model.pt"
+local_label_path = "label_mapping.json"
 
 s3_client = boto3.client("s3")
 
@@ -23,15 +26,34 @@ s3_client.download_file(
     local_model_path
 )
 
-model.load_state_dict(
-    torch.load(
-        local_model_path,
-        map_location=device
-    )
+s3_client.download_file(
+    bucket_name,
+    model_label_key,
+    local_label_path
 )
 
 
+
 image_path = sys.argv[1]
+
+if image_path.startswith("http://") or image_path.startswith("https://"):
+
+    response = requests.get(
+        image_path,
+        timeout=10
+    )
+
+    response.raise_for_status()
+
+    image = Image.open(
+        BytesIO(response.content)
+    ).convert("RGB")
+
+else:
+
+    image = Image.open(
+        image_path
+    ).convert("RGB")
 
 device = torch.device("cpu")
 
@@ -56,6 +78,7 @@ model = resnet18(
     weights=None
 )
 
+
 number_of_features = model.fc.in_features
 
 model.fc = nn.Sequential(
@@ -68,19 +91,16 @@ model.fc = nn.Sequential(
 
 model.load_state_dict(
     torch.load(
-        "model.pt",
+        local_model_path,
         map_location=device
     )
 )
+
 
 model.to(device)
 model.eval()
 
 transform = weights.transforms()
-
-image = Image.open(
-    image_path
-).convert("RGB")
 
 image_tensor = (
     transform(image)
@@ -96,22 +116,44 @@ with torch.no_grad():
         dim=1
     )[0]
 
+top_k = 3
+
 top_probabilities, top_classes = torch.topk(
     probabilities,
-    k=3
+    k=top_k
 )
 
-for rank in range(3):
+print()
+print("=" * 58)
+print("MUSHROOM CLASSIFICATION RESULTS")
+print("=" * 58)
+print(f"Image: {image_path}")
+print("-" * 58)
+
+for rank in range(top_k):
 
     class_id = top_classes[rank].item()
+    probability = top_probabilities[rank].item() * 100
+    mushroom_name = id_to_name[class_id]
 
-    probability = (
-        top_probabilities[rank].item()
-        * 100
-    )
+    bar_length = int(probability / 2)
+    bar = "█" * bar_length
 
     print(
-        f"{rank + 1}. "
-        f"{id_to_name[class_id]} "
-        f"- {probability:.2f}%"
+        f"{rank + 1:>2}. "
+        f"{mushroom_name:<28} "
+        f"{probability:>6.2f}%  "
+        f"{bar}"
     )
+
+print("-" * 58)
+
+best_class_id = top_classes[0].item()
+best_probability = top_probabilities[0].item() * 100
+
+print(
+    f"Prediction: {id_to_name[best_class_id]} "
+    f"({best_probability:.2f}%)"
+)
+
+print("=" * 58)
