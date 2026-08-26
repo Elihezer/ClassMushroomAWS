@@ -1,7 +1,6 @@
 import io
 import json
 import os
-import base64
 
 import boto3
 import torch
@@ -12,9 +11,6 @@ from torchvision.models import (
     ResNet18_Weights,
     resnet18
 )
-
-from HTML_page_model import HTML_PAGE
-
 
 MODEL_BUCKET = os.environ.get(
     "MODEL_BUCKET",
