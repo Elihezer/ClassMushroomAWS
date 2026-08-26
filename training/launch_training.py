@@ -69,7 +69,7 @@ num_workers = 8
 # Training configuration
 # -------------------------------------------------------------------------
 
-epochs = 40
+epochs = 20
 batch_size = 32
 learning_rate = 0.0001
 
@@ -106,7 +106,7 @@ bucket_name = "mushroom-ml-mikael-2026-000"
 # Define the training Parquet path.
 train_path = (
     f"{bucket_name}/processed/parquet/"
-    "mushrooms_CleanedNamesID_prunned.parquet"
+    "train.parquet"
 )
 
 # Define the validation Parquet path.
