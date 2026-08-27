@@ -1,7 +1,7 @@
 HTML_PAGE = """
 <!DOCTYPE html>
 
-<html lang="fr">
+<html lang="en">
 
 <head>
 
@@ -12,7 +12,13 @@ HTML_PAGE = """
     content="width=device-width, initial-scale=1"
 >
 
+
 <title>Mushroom AI</title>
+
+<link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css"
+>
 
 <style>
 
@@ -56,7 +62,7 @@ img {
 <h1>Mushroom AI</h1>
 
 
-<h3>Prendre une photo</h3>
+<h3>Take a picture</h3>
 
 <input
     id="cameraInput"
@@ -66,7 +72,7 @@ img {
 >
 
 
-<h3>Ou choisir une image</h3>
+<h3>Or choose an image</h3>
 
 <input
     id="imageInput"
@@ -79,7 +85,7 @@ img {
 
 
 <button id="identifyButton">
-    Identifier
+    Identify
 </button>
 
 
@@ -94,11 +100,14 @@ img {
     whether a mushroom is safe to eat.
 </p>
 
+<script
+    src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js">
+</script>
 
 <script>
 
 let selectedFile = null;
-
+let cropper = null;
 
 const cameraInput =
     document.getElementById(
@@ -128,15 +137,34 @@ const results =
 
 function selectFile(file) {
 
+
     selectedFile = file;
 
-    preview.src =
-        URL.createObjectURL(
-            file
-        );
+    if (cropper !== null) {
+        cropper.destroy();
+        cropper = null;
+    }
+
+    const imageUrl =
+        URL.createObjectURL(file);
+
+    preview.src = imageUrl;
 
     preview.style.display =
         "block";
+
+    preview.onload = function () {
+
+        cropper = new Cropper(
+            preview,
+            {
+                viewMode: 1,
+                autoCropArea: 0.8,
+                responsive: true,
+                background: false
+            }
+        );
+    };
 }
 
 
@@ -178,146 +206,6 @@ imageInput.addEventListener(
 );
 
 
-function prepareImage(file) {
-
-    return new Promise(
-        function (
-            resolve,
-            reject
-        ) {
-
-            const reader =
-                new FileReader();
-
-            reader.onload =
-                function (event) {
-
-                    const image =
-                        new Image();
-
-
-                    image.onload =
-                        function () {
-
-                            const maxSize =
-                                1280;
-
-
-                            let width =
-                                image.width;
-
-                            let height =
-                                image.height;
-
-
-                            if (
-                                width > height
-                                &&
-                                width > maxSize
-                            ) {
-
-                                height =
-                                    height
-                                    * maxSize
-                                    / width;
-
-                                width =
-                                    maxSize;
-
-                            }
-
-
-                            if (
-                                height >= width
-                                &&
-                                height > maxSize
-                            ) {
-
-                                width =
-                                    width
-                                    * maxSize
-                                    / height;
-
-                                height =
-                                    maxSize;
-
-                            }
-
-
-                            const canvas =
-                                document.createElement(
-                                    "canvas"
-                                );
-
-
-                            canvas.width =
-                                Math.round(
-                                    width
-                                );
-
-                            canvas.height =
-                                Math.round(
-                                    height
-                                );
-
-
-                            const context =
-                                canvas.getContext(
-                                    "2d"
-                                );
-
-
-                            context.drawImage(
-                                image,
-                                0,
-                                0,
-                                canvas.width,
-                                canvas.height
-                            );
-
-
-                            const dataUrl =
-                                canvas.toDataURL(
-                                    "image/jpeg",
-                                    0.85
-                                );
-
-
-                            const base64Image =
-                                dataUrl.split(
-                                    ","
-                                )[1];
-
-
-                            resolve(
-                                base64Image
-                            );
-
-                        };
-
-
-                    image.onerror =
-                        reject;
-
-
-                    image.src =
-                        event.target.result;
-
-                };
-
-
-            reader.onerror =
-                reject;
-
-
-            reader.readAsDataURL(
-                file
-            );
-
-        }
-    );
-
-}
 
 
 document
@@ -333,12 +221,24 @@ document
         ) {
 
             status.innerText =
-                "Choisis une image.";
+                "Choose an image.";
 
             return;
 
         }
 
+        if (
+            cropper === null
+        ) {
+
+            status.innerText =
+                "Image not ready.";
+
+            return;
+        }
+
+        
+        
 
         status.innerText =
             "Analyse...";
@@ -350,10 +250,22 @@ document
 
         try {
 
-            const imageBase64 =
-                await prepareImage(
-                    selectedFile
+            const canvas =
+                cropper.getCroppedCanvas(
+                    {
+                        maxWidth: 1280,
+                        maxHeight: 1280
+                    }
+             );
+
+            const dataUrl =
+                canvas.toDataURL(
+                    "image/jpeg",
+                    0.85
                 );
+
+            const imageBase64 =
+                dataUrl.split(",")[1];
 
 
             const response =
